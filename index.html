@@ -479,6 +479,8 @@
 
             let currentStream;
             let currentCaptureStep;
+            let idBlob;
+            let selfieBlob;
 
             const showDemoStep = (stepToShow) => {
                 demoSteps.forEach(step => step.classList.add('hidden'));
@@ -527,33 +529,42 @@
                 captureCanvas.width = videoFeed.videoWidth;
                 captureCanvas.height = videoFeed.videoHeight;
                 context.drawImage(videoFeed, 0, 0, videoFeed.videoWidth, videoFeed.videoHeight);
-                stopCamera();
-                
-                if (currentCaptureStep === 'id') {
-                    showDemoStep(captureSelfieBox);
-                } else if (currentCaptureStep === 'selfie') {
-                    showDemoStep(loadingBox);
-                    setTimeout(() => {
-                        const isVerified = Math.random() > 0.2; // 80% chance of success
-                        if (isVerified) {
-                            verificationKeyEl.textContent = generateKey();
-                            showDemoStep(resultBoxSuccess);
-                        } else {
-                            showDemoStep(resultBoxFailure);
-                        }
-                    }, 3000);
-                }
+                captureCanvas.toBlob(blob => {
+                    stopCamera();
+
+                    if (currentCaptureStep === 'id') {
+                        idBlob = blob;
+                        showDemoStep(captureSelfieBox);
+                    } else if (currentCaptureStep === 'selfie') {
+                        selfieBlob = blob;
+                        showDemoStep(loadingBox);
+
+                        const formData = new FormData();
+                        formData.append('id_image', idBlob, 'id.jpg');
+                        formData.append('selfie_image', selfieBlob, 'selfie.jpg');
+
+                        fetch('/verify', { method: 'POST', body: formData })
+                            .then(r => r.json())
+                            .then(data => {
+                                if (data.verified) {
+                                    verificationKeyEl.textContent = data.key;
+                                    showDemoStep(resultBoxSuccess);
+                                } else {
+                                    showDemoStep(resultBoxFailure);
+                                }
+                            })
+                            .catch(() => {
+                                showDemoStep(resultBoxFailure);
+                            });
+                    }
+                }, 'image/jpeg');
             });
             
-            const generateKey = () => {
-                const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-                let result = '';
-                for (let i = 0; i < 24; i++) result += chars.charAt(Math.floor(Math.random() * chars.length));
-                return result;
-            };
             
             const resetDemo = () => {
                 stopCamera();
+                idBlob = null;
+                selfieBlob = null;
                 copyFeedback.textContent = '';
                 const errorMessages = document.querySelectorAll('.error-text');
                 errorMessages.forEach(msg => msg.remove());
